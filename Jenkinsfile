@@ -22,7 +22,7 @@ pipeline {
                     # Installation de Node.js via nvm
                     curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
                     export NVM_DIR="$HOME/.nvm"
-                    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+                    [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
                     nvm install ${NODE_VERSION}
                     nvm use ${NODE_VERSION}
                     node --version
@@ -36,7 +36,7 @@ pipeline {
                 echo 'Installation des dépendances Node.js...'
                 sh '''
                     export NVM_DIR="$HOME/.nvm"
-                    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+                    [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
                     nvm use ${NODE_VERSION}
                     npm ci
                 '''
@@ -48,7 +48,7 @@ pipeline {
                 echo 'Exécution des tests...'
                 sh '''
                     export NVM_DIR="$HOME/.nvm"
-                    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+                    [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
                     nvm use ${NODE_VERSION}
                     npm test
                 '''
@@ -65,7 +65,7 @@ pipeline {
                 echo 'Vérification de la qualité du code...'
                 sh '''
                     export NVM_DIR="$HOME/.nvm"
-                    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+                    [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
                     nvm use ${NODE_VERSION}
                     echo "Vérification de la syntaxe JavaScript..."
                     find src -name "*.js" -exec node -c {} \\;
@@ -79,7 +79,7 @@ pipeline {
                 echo 'Construction de l\'application...'
                 sh '''
                     export NVM_DIR="$HOME/.nvm"
-                    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+                    [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
                     nvm use ${NODE_VERSION}
                     npm run build
                     ls -la dist/
@@ -92,7 +92,7 @@ pipeline {
                 echo 'Analyse de sécurité...'
                 sh '''
                     export NVM_DIR="$HOME/.nvm"
-                    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+                    [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
                     nvm use ${NODE_VERSION}
                     echo "Vérification des dépendances..."
                     npm audit --audit-level=high
