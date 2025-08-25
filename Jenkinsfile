@@ -22,9 +22,19 @@ pipeline {
             steps {
                 echo 'Vérification de l\'environnement...'
                 script {
-                    // Vérifier si Docker est disponible
+                    // Vérifier si Docker est disponible et fonctionnel
                     def dockerAvailable = sh(
-                        script: 'which docker > /dev/null 2>&1 && echo "true" || echo "false"',
+                        script: '''
+                            if which docker > /dev/null 2>&1; then
+                                if docker info > /dev/null 2>&1; then
+                                    echo "true"
+                                else
+                                    echo "false"
+                                fi
+                            else
+                                echo "false"
+                            fi
+                        ''',
                         returnStdout: true
                     ).trim()
                     
@@ -33,8 +43,16 @@ pipeline {
                     
                     if (env.DOCKER_AVAILABLE == 'true') {
                         sh '''
+                            echo "=== ENVIRONNEMENT DOCKER ==="
+                            echo "Version Docker:"
                             docker --version
-                            docker-compose --version
+                            echo "Version Docker Compose:"
+                            docker-compose --version || docker compose version
+                            echo "Informations Docker:"
+                            docker info | head -10
+                            echo "Conteneurs en cours d'exécution:"
+                            docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+                            echo "=== FIN ENVIRONNEMENT DOCKER ==="
                         '''
                     } else {
                         echo 'Docker non disponible, utilisation de Node.js local...'
@@ -133,9 +151,19 @@ pipeline {
                     if (env.DOCKER_AVAILABLE == 'true') {
                         echo 'Construction de l\'image Docker...'
                         sh '''
+                            # Construire l'image avec le tag du build
                             docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} .
                             docker tag ${DOCKER_IMAGE}:${DOCKER_TAG} ${DOCKER_IMAGE}:latest
+                            
+                            # Afficher les images construites
+                            echo "Images Docker construites:"
                             docker images ${DOCKER_IMAGE}
+                            
+                            # Vérifier que l'image a été créée
+                            if ! docker image inspect ${DOCKER_IMAGE}:${DOCKER_TAG} > /dev/null 2>&1; then
+                                echo "ERREUR: L'image Docker n'a pas été construite correctement"
+                                exit 1
+                            fi
                         '''
                     } else {
                         echo 'Construction de l\'application...'
@@ -184,13 +212,33 @@ pipeline {
                     if (env.DOCKER_AVAILABLE == 'true') {
                         echo 'Déploiement vers l\'environnement de staging...'
                         sh '''
-                            echo "Déploiement staging avec Docker Compose..."
+                            echo "=== DÉPLOIEMENT STAGING ==="
+                            
+                            # Arrêter les conteneurs existants
+                            echo "Arrêt des conteneurs existants..."
+                            docker-compose down --remove-orphans || true
+                            
+                            # Démarrer le service de staging
+                            echo "Démarrage du service de staging..."
                             docker-compose -f docker-compose.yml up -d app
-                            sleep 10
+                            
+                            # Attendre que le conteneur soit prêt
+                            echo "Attente du démarrage du conteneur..."
+                            sleep 15
+                            
+                            # Vérifier le statut des conteneurs
+                            echo "Statut des conteneurs:"
                             docker-compose ps
+                            
+                            # Vérifier les logs du conteneur
+                            echo "Logs du conteneur:"
+                            docker logs mon-app-js --tail 10 || true
+                            
+                            echo "=== DÉPLOIEMENT STAGING TERMINÉ ==="
+                            echo "📱 URL d'accès staging: http://localhost:3000"
                         '''
                     } else {
-                        echo 'Déploiement vers l\'environnement de staging...'
+                        echo 'Déploiement vers l\'environnement de staging (mode sans Docker)...'
                         sh '''
                             echo "Déploiement staging simulé"
                             mkdir -p staging
@@ -210,19 +258,43 @@ pipeline {
                     if (env.DOCKER_AVAILABLE == 'true') {
                         echo 'Déploiement vers la production...'
                         sh '''
-                            echo "Sauvegarde de la version précédente..."
-                            docker-compose down || true
+                            echo "=== DÉPLOIEMENT PRODUCTION ==="
                             
-                            echo "Déploiement de la nouvelle version..."
+                            # Arrêter les conteneurs existants
+                            echo "Arrêt des conteneurs existants..."
+                            docker-compose down --remove-orphans || true
+                            
+                            # Nettoyer les anciennes images (optionnel)
+                            echo "Nettoyage des anciennes images..."
+                            docker image prune -f || true
+                            
+                            # Démarrer le service de production
+                            echo "Démarrage du service de production..."
                             docker-compose -f docker-compose.yml up -d app
                             
-                            echo "Vérification du déploiement..."
-                            sleep 10
+                            # Attendre que le conteneur soit prêt
+                            echo "Attente du démarrage du conteneur..."
+                            sleep 15
+                            
+                            # Vérifier le statut des conteneurs
+                            echo "Statut des conteneurs:"
                             docker-compose ps
-                            docker logs mon-app-js
+                            
+                            # Vérifier les logs du conteneur
+                            echo "Logs du conteneur:"
+                            docker logs mon-app-js --tail 20 || true
+                            
+                            # Vérifier que le conteneur est en cours d'exécution
+                            if ! docker ps | grep -q mon-app-js; then
+                                echo "ERREUR: Le conteneur mon-app-js n'est pas en cours d'exécution"
+                                docker-compose logs app
+                                exit 1
+                            fi
+                            
+                            echo "=== DÉPLOIEMENT TERMINÉ ==="
                         '''
                     } else {
-                        echo 'Déploiement vers la production...'
+                        echo 'Déploiement vers la production (mode sans Docker)...'
                         sh '''
                             echo "Sauvegarde de la version précédente..."
                             if [ -d "${DEPLOY_DIR}" ]; then
@@ -248,21 +320,44 @@ pipeline {
                     try {
                         if (env.DOCKER_AVAILABLE == 'true') {
                             sh '''
-                                echo "Test de connectivité..."
-                                sleep 5
-                                curl -f http://localhost:3000/health || exit 1
-                                echo "Application déployée avec succès"
+                                echo "=== HEALTH CHECK ==="
+                                
+                                # Attendre un peu plus pour s'assurer que l'app est prête
+                                echo "Attente du démarrage complet..."
+                                sleep 10
+                                
+                                # Test de connectivité avec retry
+                                echo "Test de connectivité à l'application..."
+                                for i in {1..5}; do
+                                    echo "Tentative $i/5..."
+                                    if curl -f http://localhost:3000/health; then
+                                        echo "✅ Health check réussi!"
+                                        break
+                                    else
+                                        echo "❌ Tentative $i échouée, attente..."
+                                        sleep 5
+                                    fi
+                                done
+                                
+                                # Afficher les informations d'accès
+                                echo ""
+                                echo "🎉 APPLICATION DÉPLOYÉE AVEC SUCCÈS!"
+                                echo "📱 URL d'accès: http://localhost:3000"
+                                echo "🔍 Health check: http://localhost:3000/health"
+                                echo "📊 Statut du conteneur:"
+                                docker ps | grep mon-app-js || true
+                                echo ""
                             '''
                         } else {
                             sh '''
-                                echo "Test de connectivité simulé..."
-                                # Simulation d'un health check
+                                echo "Test de connectivité simulé (mode sans Docker)..."
                                 echo "Application déployée avec succès"
                             '''
                         }
                     } catch (Exception e) {
                         currentBuild.result = 'UNSTABLE'
                         echo "Warning: Health check failed: ${e.getMessage()}"
+                        echo "Vérifiez les logs du conteneur: docker logs mon-app-js"
                     }
                 }
             }
