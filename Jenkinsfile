@@ -4,7 +4,9 @@ pipeline {
     environment {
         NODE_VERSION = '18'
         APP_NAME = 'mon-app-js'
-        DEPLOY_DIR = '/var/www/html/mon-app'
+        DOCKER_IMAGE = 'mon-app-js'
+        DOCKER_TAG = "${env.BUILD_NUMBER}"
+        DOCKER_REGISTRY = 'localhost:5000'
     }
     
     stages {
@@ -15,42 +17,30 @@ pipeline {
             }
         }
         
-        stage('Setup Node.js') {
+        stage('Setup Docker') {
             steps {
-                echo 'Installation de Node.js...'
+                echo 'Vérification de Docker...'
                 sh '''
-                    # Installation de Node.js via nvm
-                    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
-                    export NVM_DIR="$HOME/.nvm"
-                    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-                    nvm install ${NODE_VERSION}
-                    nvm use ${NODE_VERSION}
-                    node --version
-                    npm --version
+                    docker --version
+                    docker-compose --version
                 '''
             }
         }
         
         stage('Install Dependencies') {
             steps {
-                echo 'Installation des dépendances Node.js...'
+                echo 'Installation des dépendances dans le conteneur...'
                 sh '''
-                    export NVM_DIR="$HOME/.nvm"
-                    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-                    nvm use ${NODE_VERSION}
-                    npm ci
+                    docker build --target builder -t ${DOCKER_IMAGE}:builder .
                 '''
             }
         }
         
         stage('Run Tests') {
             steps {
-                echo 'Exécution des tests...'
+                echo 'Exécution des tests dans le conteneur...'
                 sh '''
-                    export NVM_DIR="$HOME/.nvm"
-                    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-                    nvm use ${NODE_VERSION}
-                    npm test
+                    docker run --rm ${DOCKER_IMAGE}:builder npm test
                 '''
             }
             post {
@@ -64,25 +54,22 @@ pipeline {
             steps {
                 echo 'Vérification de la qualité du code...'
                 sh '''
-                    export NVM_DIR="$HOME/.nvm"
-                    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-                    nvm use ${NODE_VERSION}
-                    echo "Vérification de la syntaxe JavaScript..."
-                    find src -name "*.js" -exec node -c {} \\;
-                    echo "Vérification terminée"
+                    docker run --rm ${DOCKER_IMAGE}:builder sh -c "
+                        echo 'Vérification de la syntaxe JavaScript...'
+                        find src -name '*.js' -exec node -c {} \\;
+                        echo 'Vérification terminée'
+                    "
                 '''
             }
         }
         
-        stage('Build') {
+        stage('Build Docker Image') {
             steps {
-                echo 'Construction de l\'application...'
+                echo 'Construction de l\'image Docker...'
                 sh '''
-                    export NVM_DIR="$HOME/.nvm"
-                    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-                    nvm use ${NODE_VERSION}
-                    npm run build
-                    ls -la dist/
+                    docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} .
+                    docker tag ${DOCKER_IMAGE}:${DOCKER_TAG} ${DOCKER_IMAGE}:latest
+                    docker images ${DOCKER_IMAGE}
                 '''
             }
         }
@@ -91,11 +78,9 @@ pipeline {
             steps {
                 echo 'Analyse de sécurité...'
                 sh '''
-                    export NVM_DIR="$HOME/.nvm"
-                    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-                    nvm use ${NODE_VERSION}
-                    echo "Vérification des dépendances..."
-                    npm audit --audit-level=high
+                    docker run --rm ${DOCKER_IMAGE}:builder npm audit --audit-level=high
+                    echo "Scan de l'image Docker..."
+                    docker run --rm ${DOCKER_IMAGE}:${DOCKER_TAG} npm audit --audit-level=high || true
                 '''
             }
         }
@@ -107,9 +92,10 @@ pipeline {
             steps {
                 echo 'Déploiement vers l\'environnement de staging...'
                 sh '''
-                    echo "Déploiement staging simulé"
-                    mkdir -p staging
-                    cp -r dist/* staging/
+                    echo "Déploiement staging avec Docker Compose..."
+                    docker-compose -f docker-compose.yml up -d app
+                    sleep 10
+                    docker-compose ps
                 '''
             }
         }
@@ -122,16 +108,15 @@ pipeline {
                 echo 'Déploiement vers la production...'
                 sh '''
                     echo "Sauvegarde de la version précédente..."
-                    if [ -d "${DEPLOY_DIR}" ]; then
-                        cp -r ${DEPLOY_DIR} ${DEPLOY_DIR}_backup_$(date +%Y%m%d_%H%M%S)
-                    fi
+                    docker-compose down || true
                     
                     echo "Déploiement de la nouvelle version..."
-                    mkdir -p ${DEPLOY_DIR}
-                    cp -r dist/* ${DEPLOY_DIR}/
+                    docker-compose -f docker-compose.yml up -d app
                     
                     echo "Vérification du déploiement..."
-                    ls -la ${DEPLOY_DIR}
+                    sleep 10
+                    docker-compose ps
+                    docker logs mon-app-js
                 '''
             }
         }
@@ -143,7 +128,8 @@ pipeline {
                     try {
                         sh '''
                             echo "Test de connectivité..."
-                            # Simulation d'un health check
+                            sleep 5
+                            curl -f http://localhost:3000/health || exit 1
                             echo "Application déployée avec succès"
                         '''
                     } catch (Exception e) {
@@ -159,8 +145,8 @@ pipeline {
         always {
             echo 'Nettoyage des ressources temporaires...'
             sh '''
-                rm -rf node_modules/.cache
-                rm -rf staging
+                docker system prune -f
+                docker image prune -f
             '''
         }
         success {

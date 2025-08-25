@@ -1,0 +1,24 @@
+# Dockerfile de développement pour mon-app-js
+FROM node:18-alpine
+
+# Définir le répertoire de travail
+WORKDIR /app
+
+# Copier les fichiers de dépendances
+COPY package*.json ./
+
+# Installer toutes les dépendances (incluant devDependencies)
+RUN npm ci
+
+# Copier le code source
+COPY . .
+
+# Exposer le port
+EXPOSE 3000
+
+# Variables d'environnement pour le développement
+ENV NODE_ENV=development
+ENV PORT=3000
+
+# Commande de démarrage pour le développement
+CMD ["npm", "start"]
