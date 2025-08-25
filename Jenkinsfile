@@ -1,9 +1,5 @@
 pipeline {
-    agent {
-        dockerContainer {
-            image 'node:18-alpine'
-        }
-    }
+    agent any
     
     environment {
         NODE_VERSION = '18'
@@ -16,6 +12,17 @@ pipeline {
             steps {
                 echo 'Récupération du code source...'
                 checkout scm
+            }
+        }
+        
+        stage('Build Docker Image') {
+            steps {
+                echo 'Construction de l\'image Docker...'
+                sh '''
+                    docker --version
+                    docker build -f Dockerfile.dev -t mon-app-js:${BUILD_NUMBER} .
+                    docker images | grep mon-app-js
+                '''
             }
         }
         
@@ -33,7 +40,14 @@ pipeline {
         stage('Run Tests') {
             steps {
                 echo 'Exécution des tests...'
-                sh 'npm test'
+                sh '''
+                    # Tests locaux
+                    npm test
+                    
+                    # Tests dans le conteneur Docker
+                    echo "Tests dans le conteneur Docker..."
+                    docker run --rm mon-app-js:${BUILD_NUMBER} npm test
+                '''
             }
             post {
                 always {
@@ -59,6 +73,11 @@ pipeline {
                 sh '''
                     npm run build
                     ls -la dist/
+                    
+                    # Construction de l'image de production
+                    echo "Construction de l'image de production..."
+                    docker build -f Dockerfile -t mon-app-js-prod:${BUILD_NUMBER} .
+                    docker images | grep mon-app-js-prod
                 '''
             }
         }
@@ -73,6 +92,18 @@ pipeline {
             }
         }
         
+        stage('Archive Docker Images') {
+            steps {
+                echo 'Archivage des images Docker...'
+                sh '''
+                    echo "Sauvegarde des images Docker..."
+                    docker save mon-app-js:${BUILD_NUMBER} | gzip > mon-app-js-dev-${BUILD_NUMBER}.tar.gz
+                    docker save mon-app-js-prod:${BUILD_NUMBER} | gzip > mon-app-js-prod-${BUILD_NUMBER}.tar.gz
+                    ls -la *.tar.gz
+                '''
+            }
+        }
+        
         stage('Deploy to Staging') {
             when {
                 branch 'develop'
@@ -80,9 +111,9 @@ pipeline {
             steps {
                 echo 'Déploiement vers l\'environnement de staging...'
                 sh '''
-                    echo "Déploiement staging simulé"
-                    mkdir -p staging
-                    cp -r dist/* staging/
+                    echo "Déploiement staging avec Docker..."
+                    docker run -d --name mon-app-staging-${BUILD_NUMBER} -p 3001:3000 mon-app-js-prod:${BUILD_NUMBER}
+                    echo "Application déployée sur le port 3001"
                 '''
             }
         }
@@ -94,17 +125,16 @@ pipeline {
             steps {
                 echo 'Déploiement vers la production...'
                 sh '''
-                    echo "Sauvegarde de la version précédente..."
-                    if [ -d "${DEPLOY_DIR}" ]; then
-                        cp -r ${DEPLOY_DIR} ${DEPLOY_DIR}_backup_$(date +%Y%m%d_%H%M%S)
-                    fi
+                    echo "Arrêt du conteneur précédent..."
+                    docker stop mon-app-prod || true
+                    docker rm mon-app-prod || true
                     
                     echo "Déploiement de la nouvelle version..."
-                    mkdir -p ${DEPLOY_DIR}
-                    cp -r dist/* ${DEPLOY_DIR}/
+                    docker run -d --name mon-app-prod -p 3000:3000 --restart unless-stopped mon-app-js-prod:${BUILD_NUMBER}
                     
                     echo "Vérification du déploiement..."
-                    ls -la ${DEPLOY_DIR}
+                    docker ps | grep mon-app-prod
+                    echo "Application déployée sur le port 3000"
                 '''
             }
         }
@@ -134,6 +164,11 @@ pipeline {
             sh '''
                 rm -rf node_modules/.cache
                 rm -rf staging
+                
+                # Nettoyage des anciennes images Docker (garder seulement les 5 dernières)
+                echo "Nettoyage des anciennes images Docker..."
+                docker images mon-app-js --format "table {{.Repository}}:{{.Tag}}" | tail -n +6 | awk '{print $1}' | xargs -r docker rmi || true
+                docker images mon-app-js-prod --format "table {{.Repository}}:{{.Tag}}" | tail -n +6 | awk '{print $1}' | xargs -r docker rmi || true
             '''
         }
         success {
