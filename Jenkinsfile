@@ -25,7 +25,7 @@ pipeline {
                         # Installation de Node.js via nvm (sans sudo)
                         curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
                         export NVM_DIR="$HOME/.nvm"
-                        [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
+                        [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
                         nvm install ${NODE_VERSION}
                         nvm use ${NODE_VERSION}
                     else
@@ -34,7 +34,7 @@ pipeline {
                     
                     # Charger nvm si disponible
                     export NVM_DIR="$HOME/.nvm"
-                    [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
+                    [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
                     
                     node --version
                     npm --version
@@ -48,7 +48,7 @@ pipeline {
                 sh '''
                     # Charger nvm si disponible
                     export NVM_DIR="$HOME/.nvm"
-                    [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
+                    [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
                     
                     node --version
                     npm --version
@@ -63,7 +63,7 @@ pipeline {
                 sh '''
                     # Charger nvm si disponible
                     export NVM_DIR="$HOME/.nvm"
-                    [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
+                    [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
                     
                     npm test
                 '''
@@ -81,7 +81,7 @@ pipeline {
                 sh '''
                     # Charger nvm si disponible
                     export NVM_DIR="$HOME/.nvm"
-                    [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
+                    [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
                     
                     echo "Vérification de la syntaxe JavaScript..."
                     find src -name "*.js" -exec node -c {} \\;
@@ -96,7 +96,7 @@ pipeline {
                 sh '''
                     # Charger nvm si disponible
                     export NVM_DIR="$HOME/.nvm"
-                    [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
+                    [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
                     
                     npm run build
                     ls -la dist/
@@ -110,7 +110,7 @@ pipeline {
                 sh '''
                     # Charger nvm si disponible
                     export NVM_DIR="$HOME/.nvm"
-                    [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
+                    [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
                     
                     echo "Vérification des dépendances..."
                     npm audit --audit-level=high
