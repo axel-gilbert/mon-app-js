@@ -1,5 +1,10 @@
 pipeline {
-    agent any
+    agent {
+        docker {
+            image 'node:18-alpine'
+            args '-u root'
+        }
+    }
     
     environment {
         NODE_VERSION = '18'
@@ -15,29 +20,12 @@ pipeline {
             }
         }
         
-        stage('Setup Node.js') {
-            steps {
-                echo 'Installation de Node.js...'
-                sh '''
-                    # Installation de Node.js via nvm
-                    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
-                    export NVM_DIR="$HOME/.nvm"
-                    [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
-                    nvm install ${NODE_VERSION}
-                    nvm use ${NODE_VERSION}
-                    node --version
-                    npm --version
-                '''
-            }
-        }
-        
         stage('Install Dependencies') {
             steps {
                 echo 'Installation des dépendances Node.js...'
                 sh '''
-                    export NVM_DIR="$HOME/.nvm"
-                    [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
-                    nvm use ${NODE_VERSION}
+                    node --version
+                    npm --version
                     npm ci
                 '''
             }
@@ -46,12 +34,7 @@ pipeline {
         stage('Run Tests') {
             steps {
                 echo 'Exécution des tests...'
-                sh '''
-                    export NVM_DIR="$HOME/.nvm"
-                    [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
-                    nvm use ${NODE_VERSION}
-                    npm test
-                '''
+                sh 'npm test'
             }
             post {
                 always {
@@ -64,9 +47,6 @@ pipeline {
             steps {
                 echo 'Vérification de la qualité du code...'
                 sh '''
-                    export NVM_DIR="$HOME/.nvm"
-                    [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
-                    nvm use ${NODE_VERSION}
                     echo "Vérification de la syntaxe JavaScript..."
                     find src -name "*.js" -exec node -c {} \\;
                     echo "Vérification terminée"
@@ -78,9 +58,6 @@ pipeline {
             steps {
                 echo 'Construction de l\'application...'
                 sh '''
-                    export NVM_DIR="$HOME/.nvm"
-                    [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
-                    nvm use ${NODE_VERSION}
                     npm run build
                     ls -la dist/
                 '''
@@ -91,9 +68,6 @@ pipeline {
             steps {
                 echo 'Analyse de sécurité...'
                 sh '''
-                    export NVM_DIR="$HOME/.nvm"
-                    [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
-                    nvm use ${NODE_VERSION}
                     echo "Vérification des dépendances..."
                     npm audit --audit-level=high
                 '''
