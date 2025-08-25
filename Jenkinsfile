@@ -21,11 +21,21 @@ pipeline {
                 sh '''
                     # Vérifier si Node.js est installé
                     if ! command -v node &> /dev/null; then
-                        echo "Node.js non trouvé, installation..."
-                        # Installation de Node.js via apt (pour Ubuntu/Debian)
-                        curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
-                        sudo apt-get install -y nodejs
+                        echo "Node.js non trouvé, installation via nvm..."
+                        # Installation de Node.js via nvm (sans sudo)
+                        curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash
+                        export NVM_DIR="$HOME/.nvm"
+                        [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
+                        nvm install ${NODE_VERSION}
+                        nvm use ${NODE_VERSION}
+                    else
+                        echo "Node.js déjà installé"
                     fi
+                    
+                    # Charger nvm si disponible
+                    export NVM_DIR="$HOME/.nvm"
+                    [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
+                    
                     node --version
                     npm --version
                 '''
@@ -36,6 +46,10 @@ pipeline {
             steps {
                 echo 'Installation des dépendances Node.js...'
                 sh '''
+                    # Charger nvm si disponible
+                    export NVM_DIR="$HOME/.nvm"
+                    [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
+                    
                     node --version
                     npm --version
                     npm ci
@@ -46,7 +60,13 @@ pipeline {
         stage('Run Tests') {
             steps {
                 echo 'Exécution des tests...'
-                sh 'npm test'
+                sh '''
+                    # Charger nvm si disponible
+                    export NVM_DIR="$HOME/.nvm"
+                    [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
+                    
+                    npm test
+                '''
             }
             post {
                 always {
@@ -59,6 +79,10 @@ pipeline {
             steps {
                 echo 'Vérification de la qualité du code...'
                 sh '''
+                    # Charger nvm si disponible
+                    export NVM_DIR="$HOME/.nvm"
+                    [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
+                    
                     echo "Vérification de la syntaxe JavaScript..."
                     find src -name "*.js" -exec node -c {} \\;
                     echo "Vérification terminée"
@@ -70,6 +94,10 @@ pipeline {
             steps {
                 echo 'Construction de l\'application...'
                 sh '''
+                    # Charger nvm si disponible
+                    export NVM_DIR="$HOME/.nvm"
+                    [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
+                    
                     npm run build
                     ls -la dist/
                 '''
@@ -80,6 +108,10 @@ pipeline {
             steps {
                 echo 'Analyse de sécurité...'
                 sh '''
+                    # Charger nvm si disponible
+                    export NVM_DIR="$HOME/.nvm"
+                    [ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
+                    
                     echo "Vérification des dépendances..."
                     npm audit --audit-level=high
                 '''
